@@ -1,0 +1,22 @@
+syntax = "proto3";
+package baserpcpb;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.gostring_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.goproto_enum_prefix_all) = false;
+
+message MsgSetUp{
+    uint64 sign = 1;    // 签名，验证该msg用于何种用途
+    int32 ID = 2;       // remoteID
+    string name = 3;    // nodeName
+}
+
+message MsgCheck{
+    bool succ = 1;
+    int64 timeout = 2;
+}

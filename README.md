@@ -1,2 +1,3 @@
-# xengine_core
-core code
+# xEngineCore
+
+xServer Engine Core impl
