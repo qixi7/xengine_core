@@ -3,7 +3,6 @@ package xnet
 import (
 	"encoding/binary"
 	"io"
-	"net"
 	"runtime"
 	"strings"
 	"time"
@@ -44,7 +43,7 @@ func readFull(conn io.Reader, b []byte) error {
 }
 
 const (
-	headSize  = 13 // [size(4字节) + 是否ack(1字节) + seq(8位)]
+	headSize  = 12 // [size(4字节) + seq(8位)]
 	heartSize = 8
 )
 
@@ -53,16 +52,11 @@ const (
 	linkSerialMax
 )
 
-func writeBuffer(conn io.Writer, serial int64, isAck bool, buf []byte) error {
+func writeBuffer(conn io.Writer, serial int64, buf []byte) error {
 	// 多线程环境
 	head := byteSliceSyncCreator.Create(headSize, headSize, 4096)
 	binary.LittleEndian.PutUint32(head[:], uint32(len(buf)))
-	if isAck {
-		head[4] = 1
-	} else {
-		head[4] = 0
-	}
-	binary.LittleEndian.PutUint64(head[5:], uint64(serial))
+	binary.LittleEndian.PutUint64(head[4:], uint64(serial))
 	if err := writeFull(conn, head[:]); err != nil {
 		return err
 	}
@@ -74,17 +68,13 @@ func writeBuffer(conn io.Writer, serial int64, isAck bool, buf []byte) error {
 	return nil
 }
 
-func readBuffer(conn io.Reader, buf []byte) (int64, bool, []byte, error) {
+func readBuffer(conn io.Reader, buf []byte) (int64, []byte, error) {
 	buf = buf[:headSize]
 	if err := readFull(conn, buf); err != nil {
-		return 0, false, buf, err
+		return 0, buf, err
 	}
 	size := binary.LittleEndian.Uint32(buf[:4])
-	isAck := false
-	if buf[4] == 1 {
-		isAck = true
-	}
-	serial := int64(binary.LittleEndian.Uint64(buf[5:]))
+	serial := int64(binary.LittleEndian.Uint64(buf[4:]))
 	if cap(buf) < int(size) {
 		buf = make([]byte, size)
 	} else {
@@ -92,40 +82,10 @@ func readBuffer(conn io.Reader, buf []byte) (int64, bool, []byte, error) {
 	}
 	if len(buf) != 0 {
 		if err := readFull(conn, buf); err != nil {
-			return serial, isAck, buf, err
+			return serial, buf, err
 		}
 	}
-	return serial, isAck, buf, nil
-}
-
-func writeAck(conn net.Conn, existLocalHistory bool, his *LinkHistory) error {
-	var buf [headSize]byte
-	binary.LittleEndian.PutUint32(buf[:4], 0)
-	if existLocalHistory {
-		buf[4] = 1
-		binary.LittleEndian.PutUint64(buf[5:], uint64(his.localAck))
-	} else {
-		buf[4] = 0
-		binary.LittleEndian.PutUint64(buf[5:], 0)
-	}
-	return writeFull(conn, buf[:])
-}
-
-func readAck(conn net.Conn) (int64, bool, error) {
-	var buf [headSize]byte
-	var existHistoryInRemote bool
-	err := readFull(conn, buf[:])
-	if err != nil {
-		conn.Close()
-		return 0, false, err
-	}
-	if buf[4] == 1 {
-		existHistoryInRemote = true
-	} else {
-		existHistoryInRemote = false
-	}
-	remoteAck := int64(binary.LittleEndian.Uint64(buf[5:]))
-	return remoteAck, existHistoryInRemote, nil
+	return serial, buf, nil
 }
 
 func heartSerialize() []byte {

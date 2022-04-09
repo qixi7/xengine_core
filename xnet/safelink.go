@@ -18,15 +18,15 @@ type SafePacket interface{}
 
 type PacketFormater interface {
 	New() PacketFormater
-	WritetoBuffer(cache []byte, pk SafePacket, link *Link, his *LinkHistory) []byte
-	ReadfromBuffer(cache []byte, buf []byte) ([]byte, SafePacket)
+	WritetoBuffer(pk SafePacket, link *Link)
+	ReadfromBuffer(buf []byte) SafePacket
 	DeprecateReadPacket(pk SafePacket)
 }
 
 // (面向每个rpc连接)rpc 连接 handler
 type Watcher interface {
-	OnOpen(l *Link, udata interface{})
-	OnReopen(l *Link, udata interface{})
+	OnOpen(l *Link)
+	OnReopen(l *Link)
 	OnClose(l *Link) // maybe reopen after close
 	OnMessage(l *Link, pk SafePacket)
 }
@@ -39,25 +39,23 @@ type queueElem struct {
 
 // link. 引擎层连接实例
 type Link struct {
-	conn          net.Conn                 // 底层连接实例(real connection)
-	wat           Watcher                  // 提供给业务层的接口
-	sendSig       chan struct{}            // send signal
-	sendq         SingleConsumerSafePacket // send queue
-	sendb         []byte                   // send buf
-	recvq         chan queueElem           // recv queue
-	pkfmt         PacketFormater           // packet format
-	ackq          chan int64               // ack channel
-	serial        int64                    // current serial number
-	localID       int32                    // 本地路由ID
-	localName     string                   // 本地连接名
-	remoteID      int32                    // 远端路由ID
-	remoteName    string                   // 远端连接名
-	remoteTimeout time.Duration            // 远端超时时间
-	isdial        bool                     // 是否主动dial过去的
-	callClose     bool                     // 是否调用了close
-	closed        bool                     // 是否已经关闭
-	UData         interface{}              // user data interface
-	RTT           time.Duration            // RTT
+	conn       net.Conn                 // 底层连接实例(real connection)
+	wat        Watcher                  // 提供给业务层的接口
+	sendSig    chan struct{}            // send signal
+	sendq      SingleConsumerSafePacket // send queue
+	sendb      []byte                   // send buf
+	recvq      chan queueElem           // recv queue
+	pkfmt      PacketFormater           // packet format
+	serial     int64                    // current serial number
+	localID    int32                    // 本地路由ID
+	localName  string                   // 本地连接名
+	remoteID   int32                    // 远端路由ID
+	remoteName string                   // 远端连接名
+	isdial     bool                     // 是否主动dial过去的
+	callClose  bool                     // 是否调用了close
+	closed     bool                     // 是否已经关闭
+	UData      interface{}              // user data interface
+	RTT        time.Duration            // RTT
 }
 
 func newLink(conn net.Conn, wat Watcher, pkfmt PacketFormater, routeID int32, name string, isdial bool) *Link {
@@ -69,7 +67,6 @@ func newLink(conn net.Conn, wat Watcher, pkfmt PacketFormater, routeID int32, na
 		sendb:      make([]byte, bufferSize),
 		recvq:      make(chan queueElem, chanElemNum*16),
 		pkfmt:      pkfmt.New(),
-		ackq:       make(chan int64, 1),
 		serial:     0,
 		localID:    routeID,
 		localName:  name,
@@ -117,9 +114,9 @@ func (l *Link) GetLocalAddr() string {
 	return l.conn.LocalAddr().String()
 }
 
-// rpc 包序列: [bodySize(4字节) + flag(1字节) + seq(8位) + body(n)]
+// rpc 包序列: [bodySize(4字节) + seq(8位) + body(n)]
 // 写入size
-func (l *Link) WritePacket(bodySize int) (int64, []byte) {
+func (l *Link) WritePacket(bodySize int) []byte {
 	l.serial++
 	if l.serial > linkSerialMax {
 		l.serial = 0
@@ -131,8 +128,6 @@ func (l *Link) WritePacket(bodySize int) (int64, []byte) {
 		byte(bodySize>>8),
 		byte(bodySize>>16),
 		byte(bodySize>>24))
-	// 1 byte for ack flag
-	l.sendb = append(l.sendb, 0) // not ack
 	// 8 byte for serial seq
 	l.sendb = append(l.sendb,
 		byte(serial>>0),
@@ -150,5 +145,5 @@ func (l *Link) WritePacket(bodySize int) (int64, []byte) {
 	}
 	bufWithoutHeader := l.sendb[len(l.sendb) : len(l.sendb)+bodySize]
 	l.sendb = l.sendb[:len(l.sendb)+bodySize]
-	return serial, bufWithoutHeader
+	return bufWithoutHeader
 }

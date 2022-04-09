@@ -72,7 +72,7 @@ type rpcWatcher struct {
 	rs *RPCStatic
 }
 
-func (w *rpcWatcher) OnOpen(link *xnet.Link, udata interface{}) {
+func (w *rpcWatcher) OnOpen(link *xnet.Link) {
 	// 加入到static的map
 	w.rs.links[link.GetRemoteID()] = link
 	data := w.rs.rpcDataMGetter.Get().(*RPCDynamicData)
@@ -92,7 +92,7 @@ func (w *rpcWatcher) OnOpen(link *xnet.Link, udata interface{}) {
 	w.rs.callClusterOnOpen(link.GetRemoteName(), link)
 }
 
-func (w *rpcWatcher) OnReopen(link *xnet.Link, udata interface{}) {
+func (w *rpcWatcher) OnReopen(link *xnet.Link) {
 	w.rs.links[link.GetRemoteID()] = link
 	data := w.rs.rpcDataMGetter.Get().(*RPCDynamicData)
 	ldata, ok := data.links[link.GetRemoteID()]
@@ -210,9 +210,8 @@ func (rs *RPCStatic) newRPCHLink(addr string) *xhlink.HLinkUnitConfig {
 		},
 	}
 	return &xhlink.HLinkUnitConfig{
-		Addr:     addr,
-		Linker:   hlink,
-		UserData: nil,
+		Addr:   addr,
+		Linker: hlink,
 	}
 }
 
@@ -579,11 +578,11 @@ func (f *rpcFormatter) New() xnet.PacketFormater {
 }
 
 // rpc 协议序: [rpc类型(1字节) + 函数名size(1字节) + 函数名(n1) + seq(8字节) + err size(1字节) + err信息(n1) + ackBit(4位)]
-func (f *rpcFormatter) WritetoBuffer(cache []byte, pk xnet.SafePacket, link *xnet.Link, his *xnet.LinkHistory) []byte {
+func (f *rpcFormatter) WritetoBuffer(pk xnet.SafePacket, link *xnet.Link) {
 	switch pkType := pk.(type) {
 	case response:
 		pb := pbFormatter{pb: pkType.reply}
-		serial, buf := link.WritePacket(1 +
+		buf := link.WritePacket(1 +
 			nameSize(pkType.srvName) +
 			8 +
 			nameSize(pkType.err) +
@@ -595,10 +594,10 @@ func (f *rpcFormatter) WritetoBuffer(cache []byte, pk xnet.SafePacket, link *xne
 		size += 8
 		size += nameWrite(buf[size:], pkType.err)
 		size += pb.Write(buf[size:])
-		his.Append(serial, buf)
+		//his.Append(serial, buf)
 	case request:
 		pb := pbFormatter{pb: pkType.arg}
-		serial, buf := link.WritePacket(1 +
+		buf := link.WritePacket(1 +
 			nameSize(pkType.srvName) +
 			8 +
 			pb.Size())
@@ -608,14 +607,13 @@ func (f *rpcFormatter) WritetoBuffer(cache []byte, pk xnet.SafePacket, link *xne
 		binary.BigEndian.PutUint64(buf[size:], pkType.seq)
 		size += 8
 		size += pb.Write(buf[size:])
-		his.Append(serial, buf)
+		//his.Append(serial, buf)
 	default:
 		xlog.Errorf("write rpc type err.", pk)
 	}
-	return cache
 }
 
-func (f *rpcFormatter) ReadfromBuffer(cache []byte, buf []byte) ([]byte, xnet.SafePacket) {
+func (f *rpcFormatter) ReadfromBuffer(buf []byte) xnet.SafePacket {
 	switch buf[0] {
 	case RpcTypeResponse: // response
 		var sz int
@@ -629,9 +627,9 @@ func (f *rpcFormatter) ReadfromBuffer(cache []byte, buf []byte) ([]byte, xnet.Sa
 		res.err, sz = nameRead(buf[size:])
 		size += sz
 		if res.reply, sz, ok = pbRead(buf[size:]); !ok {
-			return cache, nil
+			return nil
 		}
-		return cache, res
+		return res
 	case RpcTypeRequest: // request
 		var sz int
 		var ok bool
@@ -642,12 +640,12 @@ func (f *rpcFormatter) ReadfromBuffer(cache []byte, buf []byte) ([]byte, xnet.Sa
 		req.seq = binary.BigEndian.Uint64(buf[size:])
 		size += 8
 		if req.arg, sz, ok = pbRead(buf[size:]); !ok {
-			return cache, nil
+			return nil
 		}
-		return cache, req
+		return req
 	default:
 		xlog.Errorf("read rpc type err.", buf[0])
-		return cache, nil
+		return nil
 	}
 }
 

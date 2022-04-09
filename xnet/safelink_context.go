@@ -3,7 +3,6 @@ package xnet
 import (
 	"bufio"
 	"encoding/binary"
-	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"net"
 	"sync"
@@ -16,22 +15,19 @@ import (
 	"xpub/netutil"
 )
 
-const ackTickDuration = time.Millisecond * 200  // ack 间隔
 const rpcHeartbeatDuration = time.Second * 3    // rpc心跳间隔
 const LinkSignature uint64 = 0x6675636b7363616e // 连接签名(防止被其他程序误连接)
 const (
-	read2writeAck = iota
-	read2writeHeart
+	read2writeHeart = iota
 	read2writeMax
 )
 
 // event 网络事件. 网络线程抛给主线程的event.
 type evValue struct {
-	ev    evKind       // 事件类型
-	link  *Link        // 连接实例
-	bind  net.Listener // lister
-	err   error        // 错误信息
-	udata interface{}  // user data
+	ev   evKind       // 事件类型
+	link *Link        // 连接实例
+	bind net.Listener // lister
+	err  error        // 错误信息
 }
 
 // 连接管理类上下文
@@ -39,12 +35,10 @@ type Context struct {
 	ev             chan evValue            // 网络事件 event channel
 	binds          map[string]net.Listener // 连接监听器map. key="ip+port", value=监听器
 	links          map[*Link]struct{}      // link map
-	his            map[int32]*LinkHistory  // 历史消息map. key=连接RemoteID, value=历史消息类
-	hmutex         sync.Mutex              // his mutex
 	isstop         bool                    // 是否调用了stop
 	hdl            evHandler               // 业务层需要实现的网络事件event处理接口
 	linkNum        int32                   // 连接数量
-	remoteMap      map[int32]struct{}      // 远端remote map
+	remoteMap      map[int32]struct{}      // 远端remote map. key=remoteID, value=是否正在连接
 	remoteMapMutex sync.Mutex              // remoteMap mutex
 	dialMap        map[string]bool         // key->远端地址, value->是否需要继续dial
 	dialMapMutex   sync.Mutex              // dialMap mutex
@@ -58,7 +52,6 @@ func NewContext() *Context {
 		ev:        make(chan evValue, chanElemNum),
 		binds:     map[string]net.Listener{},
 		links:     map[*Link]struct{}{},
-		his:       map[int32]*LinkHistory{},
 		isstop:    false,
 		hdl:       &normalHandler{},
 		remoteMap: map[int32]struct{}{},
@@ -80,7 +73,7 @@ func (ctx *Context) StopAll() {
 }
 
 // 连接一个目标机
-func (ctx *Context) PostDial(addr string, wat Watcher, pkfmt PacketFormater, routeID int32, name string, udata interface{}) {
+func (ctx *Context) PostDial(addr string, wat Watcher, pkfmt PacketFormater, routeID int32, name string) {
 	ctx.isstop = false
 	ctx.hdl = &normalHandler{}
 	go func() {
@@ -116,11 +109,11 @@ func (ctx *Context) PostDial(addr string, wat Watcher, pkfmt PacketFormater, rou
 			time.Sleep(sleepTime)
 		}
 		link := newLink(conn, wat, pkfmt, routeID, name, true)
-		go ctx.setUpLink(link, udata) // write thread
+		go ctx.setUpLink(link) // write thread
 	}()
 }
 
-func (ctx *Context) Listen(addr string, wat Watcher, pkfmt PacketFormater, routeID int32, name string, udata interface{}) error {
+func (ctx *Context) Listen(addr string, wat Watcher, pkfmt PacketFormater, routeID int32, name string) error {
 	ctx.isstop = false
 	// 优化: 同时监听本机ip和回环地址(去掉ip)
 	if _, portStr, err := net.SplitHostPort(addr); err == nil {
@@ -146,14 +139,14 @@ func (ctx *Context) Listen(addr string, wat Watcher, pkfmt PacketFormater, route
 				break
 			}
 			link := newLink(conn, wat, pkfmt, routeID, name, false)
-			go ctx.setUpLink(link, udata) // write thread
+			go ctx.setUpLink(link) // write thread
 		}
 	}()
 	return nil
 }
 
 // 建立连接
-func (ctx *Context) setUpLink(link *Link, udata interface{}) {
+func (ctx *Context) setUpLink(link *Link) {
 	var err error
 	// rpc协议栈握手_第1次: set up
 	headbuf := make([]byte, headSize)
@@ -169,11 +162,11 @@ func (ctx *Context) setUpLink(link *Link, udata interface{}) {
 		return
 	}
 	buf = append(headbuf, buf...)
-	recv, ok := exchangeMessage(buf, ctx, link, udata)
+	recv, ok := exchangeMessage(buf, ctx, link)
 	if !ok {
 		xlog.Errorf("setUpLink MsgSetUp err, close and redial.")
 		link.conn.Close()
-		ctx.redialIfDisconnect(link, udata)
+		ctx.redialIfDisconnect(link)
 		return
 	}
 	func() {
@@ -192,7 +185,7 @@ func (ctx *Context) setUpLink(link *Link, udata interface{}) {
 	if setup.Sign != LinkSignature {
 		xlog.Errorf("setUpLink setup.Sign != LinkSignature, close and redial.")
 		link.conn.Close()
-		ctx.redialIfDisconnect(link, udata)
+		ctx.redialIfDisconnect(link)
 		return
 	}
 
@@ -207,13 +200,10 @@ func (ctx *Context) setUpLink(link *Link, udata interface{}) {
 	}
 	ctx.remoteMapMutex.Unlock()
 	if hasRemoteID {
-		//buf = buf[:headSize]
-		//buf = check.SerializeDirect(buf, nil)
-		//binary.LittleEndian.PutUint32(buf, uint32(len(buf)-headSize))
 		xlog.Errorf("duplicate remote ID:%d closing", setup.ID)
 		time.Sleep(time.Second) // make sure the packet is received by the remote peer
 		link.conn.Close()
-		ctx.redialIfDisconnect(link, udata)
+		ctx.redialIfDisconnect(link)
 		return
 	}
 	defer func() {
@@ -221,81 +211,18 @@ func (ctx *Context) setUpLink(link *Link, udata interface{}) {
 		delete(ctx.remoteMap, remoteID)
 		ctx.remoteMapMutex.Unlock()
 	}()
-	// rpc协议栈握手_第2次: check local data
-	check := &baserpcpb.MsgCheck{Succ: true, Timeout: int64(ctx.Timeout)}
-	buf, err = check.Marshal()
-	buf = append(headbuf, buf...)
-	recv, ok = exchangeMessage(buf, ctx, link, udata)
-	if !ok {
-		xlog.Errorf("setUpLink MsgCheck err, close.")
-		link.conn.Close()
-		ctx.redialIfDisconnect(link, udata)
-		return
-	}
-	err = check.Unmarshal(recv)
-	if err != nil {
-		xlog.Errorf("setUpLink Unmarshal MsgCheck err=%v", err)
-		return
-	}
-	if !check.Succ {
-		panic(fmt.Sprintf("remote link repeatedm remote[%d] self[%d]",
-			link.remoteID, link.localID))
-		return
-	}
-	link.remoteTimeout = time.Duration(check.Timeout)
 
-	// rpc协议栈握手_第3次: 交换ack
-	ctx.hmutex.Lock()
-	his, existLocalHistory := ctx.his[remoteID]
-	ctx.hmutex.Unlock()
-	if err = writeAck(link.conn, existLocalHistory, his); err != nil {
-		xlog.Errorf("writeAck error:%v", err)
-		link.conn.Close()
-		ctx.redialIfDisconnect(link, udata)
-		return
-	}
-	remoteAck, existHistoryInRemote, err := readAck(link.conn)
-	if err != nil {
-		xlog.Errorf("readAck error:%v", err)
-		link.conn.Close()
-		ctx.redialIfDisconnect(link, udata)
-		return
-	}
-
-	// send history
 	read2write := initRead2Write()
-	// 双端都是重连上来. 回调Reopen, 重发historyData
-	if existLocalHistory && existHistoryInRemote {
-		link.serial = his.maxSerial
-		ctx.ev <- evValue{ev: evReopen, link: link, udata: udata}
-		go ctx.runRead(link, read2write, his, udata) // read thread
-		for _, elem := range his.back {
-			if elem.serial > remoteAck {
-				if writeBuffer(link.conn, elem.serial, false, elem.data) != nil {
-					break
-				}
-			}
-		}
-	} else {
-		// 每一个远端连接创建一个history
-		his = newLinkHistory()
-		ctx.hmutex.Lock()
-		ctx.his[remoteID] = his
-		ctx.hmutex.Unlock()
-		ctx.ev <- evValue{ev: evOpen, link: link, udata: udata}
-		go ctx.runRead(link, read2write, his, udata) // read thread
-	}
-	his.remoteID = remoteID
-	his.remoteName = link.remoteName
+
+	// push rpc连接上来事件
+	ctx.ev <- evValue{ev: evOpen, link: link}
+	go ctx.runRead(link, read2write) // read thread
+
 	atomic.AddInt32(&ctx.linkNum, 1)
 
-	ackTicker := time.NewTicker(ackTickDuration)
-	defer ackTicker.Stop()
 	heartTicker := time.NewTicker(rpcHeartbeatDuration)
 	defer heartTicker.Stop()
 
-	var lastAck int64
-	var writeCache = make([]byte, 0)
 sendThread:
 	for {
 		select {
@@ -307,7 +234,7 @@ sendThread:
 			link.sendb = link.sendb[:0]
 			var pk SafePacket
 			for link.sendq.Pop(&pk) {
-				writeCache = link.pkfmt.WritetoBuffer(writeCache, pk, link, his)
+				link.pkfmt.WritetoBuffer(pk, link)
 				if len(link.sendb) > maxBufferSize && !link.closed {
 					select {
 					case link.sendSig <- struct{}{}:
@@ -317,50 +244,32 @@ sendThread:
 				}
 			}
 			writeFull(link.conn, link.sendb)
-		case fn := <-read2write[read2writeAck]:
-			fn()
-		case <-ackTicker.C:
-			if lastAck != his.localAck {
-				lastAck = his.localAck
-				writeBuffer(link.conn, his.localAck, true, nil) // send ack
-			}
 		case <-heartTicker.C:
 			if link.isdial {
-				writeBuffer(link.conn, linkSerialHeart, false, heartSerialize())
+				writeBuffer(link.conn, linkSerialHeart, heartSerialize())
 			}
 		case fn := <-read2write[read2writeHeart]:
 			fn()
-		case serial := <-link.ackq:
-			his.localAck = serial // update ack
 		}
 	}
 
-	select {
-	case serial := <-link.ackq:
-		his.localAck = serial
-	default:
-	}
-
-	his.maxSerial = link.serial
 	atomic.AddInt32(&ctx.linkNum, -1)
-	ctx.redialIfDisconnect(link, udata)
+	ctx.redialIfDisconnect(link)
 }
 
 // rpc: read
-func (ctx *Context) runRead(link *Link, read2write [read2writeMax]chan func(), his *LinkHistory, udata interface{}) {
+func (ctx *Context) runRead(link *Link, read2write [read2writeMax]chan func()) {
 	var buf = make([]byte, bufferSize) // it can grow
-	//grow := cap(link.recvq)
 	reader := bufio.NewReaderSize(link.conn, bufferSize)
-	var readCache = make([]byte, 0)
 	for {
-		if ctx.Timeout > 0 && link.remoteTimeout >= 0 {
+		if ctx.Timeout > 0 {
 			if err := link.conn.SetReadDeadline(time.Now().Add(ctx.Timeout)); err != nil {
 				xlog.Errorf("<xnet_safelink> remote:%s_%d set dead line err=%v",
 					link.remoteName, link.remoteID, err)
 				break
 			}
 		}
-		serial, isAck, tempBuf, err := readBuffer(reader, buf)
+		serial, tempBuf, err := readBuffer(reader, buf)
 		if err != nil {
 			break
 		}
@@ -370,28 +279,14 @@ func (ctx *Context) runRead(link *Link, read2write [read2writeMax]chan func(), h
 			} else {
 				// receive heart, update to latest
 				read2WriteSingleUpdate(read2write[read2writeHeart], func() {
-					writeBuffer(link.conn, linkSerialHeart, false, tempBuf)
+					writeBuffer(link.conn, linkSerialHeart, tempBuf)
 				})
 			}
-			continue
-		} else if isAck {
-			// receive ack, need erase backup
-			read2WriteSingleUpdate(read2write[read2writeAck], func() {
-				// 删除backup的历史消息
-				i := 0
-				for ; i < len(his.back); i++ {
-					if his.back[i].serial > serial {
-						break
-					}
-				}
-				n := copy(his.back, his.back[i:])
-				his.back = his.back[:n]
-			})
 			continue
 		}
 
 		var pk SafePacket
-		readCache, pk = link.pkfmt.ReadfromBuffer(readCache, tempBuf)
+		pk = link.pkfmt.ReadfromBuffer(tempBuf)
 		if pk == nil {
 			continue
 		}
@@ -403,21 +298,13 @@ func (ctx *Context) runRead(link *Link, read2write [read2writeMax]chan func(), h
 		if xutil.GApp.IsEvenDriverMode() { // 事件驱动模式下立即处理消息
 			xutil.GApp.InvokeFuncOnMain()
 		}
-		//if len(link.recvq) >= grow {
-		//	grow += (cap(link.recvq) - grow) / 2
-		//	xlog.Warnf("Recv(recv,ev,evCache), len(recvq)=%d, len(ctx.ev)=%d, len(ctx.evCache)=%d",
-		//		len(link.recvq), len(ctx.ev), ctx.evCache.Len())
-		//} else if len(link.recvq) < cap(link.recvq)/8 {
-		//	grow = cap(link.recvq) / 2
-		//}
 	}
 	link.conn.Close()
 	ctx.ev <- evValue{ev: evClose, link: link}
-	delete(ctx.his, link.remoteID)
 }
 
 // rpc 协议栈握手
-func exchangeMessage(buf []byte, ctx *Context, link *Link, udata interface{}) ([]byte, bool) {
+func exchangeMessage(buf []byte, ctx *Context, link *Link) ([]byte, bool) {
 	binary.LittleEndian.PutUint32(buf, uint32(len(buf)-headSize))
 	if err := writeFull(link.conn, buf); err != nil {
 		xlog.Errorf("exchangeMessage phase 1:", err)
@@ -469,7 +356,6 @@ func (ctx *Context) needDial(addr string) bool {
 
 func initRead2Write() [read2writeMax]chan func() {
 	var read2write [read2writeMax]chan func()
-	read2write[read2writeAck] = make(chan func(), 1)
 	read2write[read2writeHeart] = make(chan func(), 1)
 	return read2write
 }
@@ -491,7 +377,7 @@ func read2WriteSingleUpdate(ch chan func(), fn func()) {
 }
 
 // 重新dial断开的rpc连接
-func (ctx *Context) redialIfDisconnect(link *Link, udata interface{}) bool {
+func (ctx *Context) redialIfDisconnect(link *Link) bool {
 	if !link.isdial {
 		return false
 	}
@@ -501,7 +387,7 @@ func (ctx *Context) redialIfDisconnect(link *Link, udata interface{}) bool {
 	}
 	// disconnect, then auto reconnect
 	xlog.InfoF("ReDial Addr=[%s]", link.conn.RemoteAddr().String())
-	ctx.PostDial(link.conn.RemoteAddr().String(), link.wat, link.pkfmt, link.localID, link.localName, udata)
+	ctx.PostDial(link.conn.RemoteAddr().String(), link.wat, link.pkfmt, link.localID, link.localName)
 	return true
 }
 
@@ -510,8 +396,6 @@ func (ctx *Context) dealEvent(ev evValue) {
 	switch ev.ev {
 	case evOpen:
 		ctx.hdl.OnOpen(ctx, ev)
-	case evReopen:
-		ctx.hdl.OnReopen(ctx, ev)
 	case evClose:
 		ctx.hdl.OnClose(ctx, ev)
 	case evMessage:

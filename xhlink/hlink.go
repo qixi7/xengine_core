@@ -14,9 +14,8 @@ type HLinker interface {
 }
 
 type HLinkUnitConfig struct {
-	Addr     string
-	Linker   HLinker
-	UserData interface{}
+	Addr   string
+	Linker HLinker
 }
 
 type HLinkConfig struct {
@@ -80,7 +79,7 @@ func (mgr *HLinkMgr) AddDial(dials []*HLinkUnitConfig) {
 		}
 		xlog.InfoF("Add PostDial Addr=[%s]", dials[i].Addr)
 		mgr.config.DialMap[dials[i].Addr] = dials[i]
-		mgr.ctx.PostDial(dials[i].Addr, dials[i].Linker, dials[i].Linker, mgr.config.RouteID, mgr.config.Name, dials[i].UserData)
+		mgr.ctx.PostDial(dials[i].Addr, dials[i].Linker, dials[i].Linker, mgr.config.RouteID, mgr.config.Name)
 	}
 }
 
@@ -110,13 +109,13 @@ func (mgr *HLinkMgr) initLink() {
 	if len(mgr.config.ListenMap) > 0 {
 		for _, cfg := range mgr.config.ListenMap {
 			xlog.InfoF("listen Addr=[%s]", cfg.Addr)
-			mgr.ctx.Listen(cfg.Addr, cfg.Linker, cfg.Linker, mgr.config.RouteID, mgr.config.Name, cfg.UserData)
+			mgr.ctx.Listen(cfg.Addr, cfg.Linker, cfg.Linker, mgr.config.RouteID, mgr.config.Name)
 		}
 	}
 	if len(mgr.config.DialMap) > 0 {
 		for _, cfg := range mgr.config.DialMap {
 			xlog.InfoF("PostDial Addr=[%s]", cfg.Addr)
-			mgr.ctx.PostDial(cfg.Addr, cfg.Linker, cfg.Linker, mgr.config.RouteID, mgr.config.Name, cfg.UserData)
+			mgr.ctx.PostDial(cfg.Addr, cfg.Linker, cfg.Linker, mgr.config.RouteID, mgr.config.Name)
 		}
 	}
 }
