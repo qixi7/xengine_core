@@ -258,7 +258,6 @@ func (rs *RPCStatic) GetRemoteIDByNodeName(name string) int32 {
 type ClusterHandler interface {
 	OnOpen(node string, link *xnet.Link)
 	OnClose(node string, link *xnet.Link)
-	OnShutdown(node string, remote int32)
 }
 
 // 添加rpc连接监听handler
