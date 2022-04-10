@@ -75,59 +75,13 @@ type rpcWatcher struct {
 func (w *rpcWatcher) OnOpen(link *xnet.Link) {
 	// 加入到static的map
 	w.rs.links[link.GetRemoteID()] = link
-	data := w.rs.rpcDataMGetter.Get().(*RPCDynamicData)
-	// 加入到rpc data的map
-	ldata := &rpcLink{}
-	data.links[link.GetRemoteID()] = ldata
 
 	nodenames := strings.Split(link.GetRemoteName(), ",")
 	for i := 0; i < len(nodenames); i++ {
 		w.rs.name2link[nodenames[i]] = link
 	}
-	for i := 0; i < len(nodenames); i++ {
-		data.name2link[nodenames[i]] = ldata
-	}
-
 	xlog.InfoF("%s[%s - %d] rpc open", link.GetRemoteName(), link.GetRemoteAddr(), link.GetRemoteID())
 	w.rs.callClusterOnOpen(link.GetRemoteName(), link)
-}
-
-func (w *rpcWatcher) OnReopen(link *xnet.Link) {
-	w.rs.links[link.GetRemoteID()] = link
-	data := w.rs.rpcDataMGetter.Get().(*RPCDynamicData)
-	ldata, ok := data.links[link.GetRemoteID()]
-	if !ok {
-		ldata = &rpcLink{}
-		data.links[link.GetRemoteID()] = ldata
-	}
-	nodenames := strings.Split(link.GetRemoteName(), ",")
-	for i := 0; i < len(nodenames); i++ {
-		w.rs.name2link[nodenames[i]] = link
-	}
-	for i := 0; i < len(nodenames); i++ {
-		data.name2link[nodenames[i]] = ldata
-	}
-
-	//if ldata.disconn != nil {
-	//	for _, call := range ldata.disconn {
-	//		if call.responseSeq > 0 {
-	//			res := response{
-	//				srvName: call.srvName,
-	//				seq:     call.responseSeq,
-	//				err:     "",
-	//				reply:   call.arg,
-	//			}
-	//			link.Send(res)
-	//		} else {
-	//			w.rs.sendCall(link, call.srvName, call.arg, call.cb)
-	//			xlog.Debugf("OnReopen send srvName=%s", call.srvName)
-	//		}
-	//	}
-	//	ldata.disconn = nil
-	//}
-
-	xlog.InfoF("%s[%s - %d] rpc reopen", link.GetRemoteName(), link.GetRemoteAddr(), link.GetRemoteID())
-	w.rs.callClusterOnReopen(link.GetRemoteName(), link)
 }
 
 func (w *rpcWatcher) OnClose(link *xnet.Link) {
@@ -147,11 +101,6 @@ func (w *rpcWatcher) OnClose(link *xnet.Link) {
 		xlog.InfoF("rpc close [%s] name2link=%v", nodenames[i], w.rs.name2link)
 	}
 	w.rs.callClusterOnClose(nodename, link)
-
-	//data := w.rs.getter.Get().(*RPCDynamicData)
-	//for data.timeout.Len() > 0 {
-	//heap.Pop(&data.timeout) // if reconnect, don't timeout
-	//}
 }
 
 func (w *rpcWatcher) OnMessage(link *xnet.Link, pk xnet.SafePacket) {
@@ -408,23 +357,14 @@ func (rs *RPCStatic) CallName(nodename, srvName string, arg xnet.ProtoMessage, c
 	}
 	// rpc call 失败, 直接报错
 	rs.metric.ErrorCount++
-	data := rs.rpcDataMGetter.Get().(*RPCDynamicData)
-	_, ok := data.name2link[nodename]
+
+	_, ok := rs.name2link[nodename]
 	if ok {
 		xlog.Errorf("CallName disconnect nodename %s, method=%s", nodename, srvName)
 	} else {
 		xlog.Errorf("CallName no nodename %s, method=%s", nodename, srvName)
 	}
 	return false
-
-	//if len(ldata.disconn) >= disconnectNum {
-	//	rs.metric.DroppedCount++
-	//	xlog.Errorf("CallName %s, srvName=%s, over flow %d", nodename, srvName, len(ldata.disconn))
-	//	return false
-	//}
-	//ldata.disconn = append(ldata.disconn, rpcCall{srvName: srvName, arg: arg, cb: cb})
-	//xlog.Debugf("append one disconn rpc call! nodename=%s, srvName=%s", nodename, srvName)
-	//return true
 }
 
 // 通过link ID call
@@ -435,22 +375,13 @@ func (rs *RPCStatic) CallID(remoteID int32, srvName string, arg xnet.ProtoMessag
 	}
 	// rpc call 失败, 直接报错
 	rs.metric.ErrorCount++
-	data := rs.rpcDataMGetter.Get().(*RPCDynamicData)
-	_, ok := data.links[remoteID]
+	_, ok := rs.links[remoteID]
 	if ok {
 		xlog.Errorf("CallName disconnect remoteID %d, srvName=%s", remoteID, srvName)
 	} else {
 		xlog.Errorf("CallName no remoteID %d, srvName=%s", remoteID, srvName)
 	}
 	return false
-
-	//if len(ldata.disconn) >= disconnectNum {
-	//	rs.metric.DroppedCount++
-	//	xlog.Errorf("CallID %s, srvName=%s over flow %d", remoteID, srvName, len(ldata.disconn))
-	//	return false
-	//}
-	//ldata.disconn = append(ldata.disconn, rpcCall{srvName: srvName, arg: arg, cb: cb})
-	//return true
 }
 
 func (rs *RPCStatic) Init(selfGetter xmodule.DModuleGetter) bool {
@@ -577,7 +508,9 @@ func (f *rpcFormatter) New() xnet.PacketFormater {
 	return f
 }
 
-// rpc 协议序: [rpc类型(1字节) + 函数名size(1字节) + 函数名(n1) + seq(8字节) + err size(1字节) + err信息(n1) + ackBit(4位)]
+// rpc 协议序:
+//	请求request: [rpc类型(1字节) + 函数名size(1字节) + 函数名(n1) + seq(8字节) + body(n1)]
+//  回复response:[rpc类型(1字节) + 函数名size(1字节) + 函数名(n1) + seq(8字节) + err size(1字节) + err信息(n1) + body(n1)]
 func (f *rpcFormatter) WritetoBuffer(pk xnet.SafePacket, link *xnet.Link) {
 	switch pkType := pk.(type) {
 	case response:
@@ -594,7 +527,6 @@ func (f *rpcFormatter) WritetoBuffer(pk xnet.SafePacket, link *xnet.Link) {
 		size += 8
 		size += nameWrite(buf[size:], pkType.err)
 		size += pb.Write(buf[size:])
-		//his.Append(serial, buf)
 	case request:
 		pb := pbFormatter{pb: pkType.arg}
 		buf := link.WritePacket(1 +
@@ -607,7 +539,6 @@ func (f *rpcFormatter) WritetoBuffer(pk xnet.SafePacket, link *xnet.Link) {
 		binary.BigEndian.PutUint64(buf[size:], pkType.seq)
 		size += 8
 		size += pb.Write(buf[size:])
-		//his.Append(serial, buf)
 	default:
 		xlog.Errorf("write rpc type err.", pk)
 	}

@@ -8,10 +8,6 @@ import (
 	"xcore/xnet"
 )
 
-type rpcLink struct {
-	//disconn []rpcCall
-}
-
 // Call represents an active RPC
 type rpcCall struct {
 	srvName     string            // The name service and method to call
@@ -22,28 +18,18 @@ type rpcCall struct {
 }
 
 // rpc data.
-// 思路:
-//	1、可以把对应的rpc连接发送失败的包缓存起来, 等重连上来后再补发.
-// 	2、所以在RPCStatic维护一份rpc连接map, 在RPCDynamicData也维护了一份rpc连接map
-//	两者不同之处是, 让一个rpc连接断开时RPCStatic会删除该连接, 而RPCDynamicData不会删除
-//	不删除是为了当连接重连上来时, 判断是否有需要补发的rpc数据
-// 	3、当然. 欢迎更好的做法 :)
 type RPCDynamicData struct {
-	links     map[int32]*rpcLink  // remoteID -> link
-	name2link map[string]*rpcLink // nodename -> link
-	pending   map[uint64]rpcCall  // 有callback的rpc请求会加入到pending, 收到callback时从pending中删除
-	timeout   timeoutQueue        // 带callback的rpc请求超时队列
-	seq       uint64              // 发送的rpc序列号
+	pending map[uint64]rpcCall // 有callback的rpc请求会加入到pending, 收到callback时从pending中删除
+	timeout timeoutQueue       // 带callback的rpc请求超时队列
+	seq     uint64             // 发送的rpc序列号
 }
 
 // new
 func NewRPCDynamicData() *RPCDynamicData {
 	data := &RPCDynamicData{
-		links:     map[int32]*rpcLink{},
-		name2link: map[string]*rpcLink{},
-		pending:   map[uint64]rpcCall{},
-		timeout:   timeoutQueue{},
-		seq:       0,
+		pending: map[uint64]rpcCall{},
+		timeout: timeoutQueue{},
+		seq:     0,
 	}
 	heap.Init(&data.timeout)
 	return data
@@ -121,20 +107,12 @@ func (p *PipeImpl) Reply(reply xnet.ProtoMessage) {
 	}
 	// rpc reply 失败, 直接报错
 	rs.metric.ErrorCount++
-	data := rs.rpcDataMGetter.Get().(*RPCDynamicData)
-	_, ok := data.links[p.remoteID]
+	_, ok := rs.links[p.remoteID]
 	if ok {
 		xlog.Errorf("Pipe.Reply disconnect remoteID=%d, srvName=%s", p.remoteID, p.srvName)
 	} else {
 		xlog.Errorf("Pipe.Reply no remoteID=%d, srvName=%s", p.remoteID, p.srvName)
 	}
-	//if len(ldata.disconn) >= disconnectNum {
-	//	rs.metric.DroppedCount++
-	//	xlog.Errorf("Pipe.Reply overflow, remoteID=%d, len(disconn)=%d",
-	//		p.remoteID, len(ldata.disconn))
-	//	return
-	//}
-	//ldata.disconn = append(ldata.disconn, rpcCall{srvName: p.srvName, arg: reply, cb: nil, responseSeq: p.seq})
 }
 
 func (p *PipeImpl) RemoteID() int32 {
@@ -153,21 +131,13 @@ func (p *PipeImpl) Call(srvName string, arg xnet.ProtoMessage, cb Callback) {
 		return
 	}
 	rs.metric.ErrorCount++
-	data := rs.rpcDataMGetter.Get().(*RPCDynamicData)
-	_, ok := data.links[p.remoteID]
+	_, ok := rs.links[p.remoteID]
 	if ok {
 		xlog.Errorf("Pipe.Call disconnect remoteID=%d, srvName=%s", p.remoteID, p.srvName)
 	} else {
 		xlog.Errorf("Pipe.Call no remoteID=%d, srvName=%s", p.remoteID, p.srvName)
 	}
 	return
-	//if len(ldata.disconn) >= disconnectNum {
-	//	rs.metric.DroppedCount++
-	//	xlog.Errorf("Pipe.Call overflow, remoteID=%d, len(disconn)=%d",
-	//		p.remoteID, len(ldata.disconn))
-	//	return
-	//}
-	//ldata.disconn = append(ldata.disconn, rpcCall{srvName: p.srvName, arg: arg, cb: cb})
 }
 
 type Callback interface {

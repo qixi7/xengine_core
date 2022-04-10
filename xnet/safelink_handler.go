@@ -25,11 +25,6 @@ func (hdl *normalHandler) OnOpen(ctx *Context, ev evValue) {
 	ev.link.wat.OnOpen(ev.link)
 }
 
-func (hdl *normalHandler) OnReopen(ctx *Context, ev evValue) {
-	ctx.links[ev.link] = struct{}{}
-	ev.link.wat.OnReopen(ev.link)
-}
-
 func (hdl *normalHandler) OnClose(ctx *Context, ev evValue) {
 	link := ev.link
 	delete(ctx.links, link)

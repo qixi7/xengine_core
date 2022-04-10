@@ -26,8 +26,7 @@ type PacketFormater interface {
 // (面向每个rpc连接)rpc 连接 handler
 type Watcher interface {
 	OnOpen(l *Link)
-	OnReopen(l *Link)
-	OnClose(l *Link) // maybe reopen after close
+	OnClose(l *Link)
 	OnMessage(l *Link, pk SafePacket)
 }
 

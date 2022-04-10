@@ -257,7 +257,6 @@ func (rs *RPCStatic) GetRemoteIDByNodeName(name string) int32 {
 // ClusterHandler set cluster callback
 type ClusterHandler interface {
 	OnOpen(node string, link *xnet.Link)
-	OnReopen(node string, link *xnet.Link)
 	OnClose(node string, link *xnet.Link)
 	OnShutdown(node string, remote int32)
 }
@@ -272,16 +271,6 @@ func (rs *RPCStatic) callClusterOnOpen(name string, link *xnet.Link) {
 	for nodePrefix, h := range rs.handler {
 		if strings.HasPrefix(name, nodePrefix) {
 			h.OnOpen(name, link)
-			break
-		}
-	}
-}
-
-// 调用rpc连接reopen事件
-func (rs *RPCStatic) callClusterOnReopen(name string, link *xnet.Link) {
-	for nodePrefix, h := range rs.handler {
-		if strings.HasPrefix(name, nodePrefix) {
-			h.OnReopen(name, link)
 			break
 		}
 	}
