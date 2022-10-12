@@ -1,11 +1,11 @@
 package xhlink
 
 import (
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmodule"
+	"github.com/qixi7/xengine_core/xnet"
 	"os"
 	"time"
-	"xcore/xlog"
-	"xcore/xmodule"
-	"xcore/xnet"
 )
 
 type HLinker interface {

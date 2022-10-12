@@ -5,10 +5,10 @@ dynamic 模块. 放动态更新的游戏逻辑模块. 比如玩家管理模块,�
 */
 
 import (
+	"github.com/qixi7/xengine_core/xlog"
 	"reflect"
 	"strings"
 	"time"
-	"xcore/xlog"
 )
 
 type DModule interface {

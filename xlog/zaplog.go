@@ -1,9 +1,9 @@
 package xlog
 
 import (
+	"github.com/qixi7/xengine_core/xlog/lumberjack-2.0"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"xcore/xlog/lumberjack-2.0"
 )
 
 var zapLogger *zap.Logger // logger

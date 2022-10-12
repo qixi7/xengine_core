@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"github.com/bmizerany/pat"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/qixi7/xengine_core/xconsul"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmetric"
+	"github.com/qixi7/xengine_core/xprofile"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -16,10 +20,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"xcore/xconsul"
-	"xcore/xlog"
-	"xcore/xmetric"
-	"xcore/xprofile"
 )
 
 var (

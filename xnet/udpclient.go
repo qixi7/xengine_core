@@ -2,9 +2,9 @@ package xnet
 
 import (
 	"crypto/tls"
+	"github.com/qixi7/xengine_core/rdp"
+	"github.com/qixi7/xengine_core/xlog"
 	"github.com/xtaci/kcp-go"
-	"xcore/rdp"
-	"xcore/xlog"
 )
 
 /**

@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmemory"
+	"github.com/qixi7/xengine_core/xnet/codec"
 	"sync"
-	"xcore/xlog"
-	"xcore/xmemory"
-	"xcore/xnet/codec"
 )
 
 const (

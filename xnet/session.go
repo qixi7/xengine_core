@@ -3,11 +3,11 @@ package xnet
 import (
 	"errors"
 	"fmt"
+	"github.com/qixi7/xengine_core/xcontainer/channel"
 	"net"
 	"sync"
 	"sync/atomic"
 	"unsafe"
-	"xcore/xcontainer/channel"
 )
 
 var (

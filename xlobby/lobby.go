@@ -3,11 +3,11 @@ package xlobby
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/qixi7/xengine_core/xconsul"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmodule"
+	"github.com/qixi7/xengine_core/xutil"
 	"time"
-	"xcore/xconsul"
-	"xcore/xlog"
-	"xcore/xmodule"
-	"xcore/xutil"
 )
 
 type ILobbyRequestInfo interface {

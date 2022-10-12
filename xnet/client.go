@@ -7,9 +7,9 @@ package xnet
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/qixi7/xengine_core/xlog"
 	"net"
 	"time"
-	"xcore/xlog"
 )
 
 type TransmitProto int

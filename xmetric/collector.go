@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/qixi7/xengine_core/xconsul"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmodule"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"time"
-	"xcore/xconsul"
-	"xcore/xlog"
-	"xcore/xmodule"
 )
 
 const unknown = "unknown"

@@ -2,8 +2,8 @@ package timer
 
 import (
 	"container/heap"
+	"github.com/qixi7/xengine_core/xmodule"
 	"time"
-	"xcore/xmodule"
 )
 
 type priorityQueue struct {

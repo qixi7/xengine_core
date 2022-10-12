@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/qixi7/xengine_core/xhlink"
+	"github.com/qixi7/xengine_core/xnet"
 	"io/ioutil"
 	"os"
 	"sort"
 	"strings"
-	"xcore/xhlink"
-	"xcore/xnet"
 )
 
 // 非默认rpc连接协议定制

@@ -2,10 +2,10 @@ package xlog
 
 import (
 	"errors"
+	"github.com/qixi7/xengine_core/xlog/lumberjack-2.0"
 	"sync"
 	"sync/atomic"
 	"time"
-	"xcore/xlog/lumberjack-2.0"
 )
 
 var (

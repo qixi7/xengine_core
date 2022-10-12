@@ -1,9 +1,9 @@
 package job
 
 import (
+	"github.com/qixi7/xengine_core/xcontainer/channel"
+	"github.com/qixi7/xengine_core/xmodule"
 	"sync"
-	"xcore/xcontainer/channel"
-	"xcore/xmodule"
 )
 
 type Controller struct {

@@ -3,8 +3,8 @@ package xconsul
 import (
 	"github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
+	"github.com/qixi7/xengine_core/xlog"
 	"time"
-	"xcore/xlog"
 )
 
 type HTTPConfig struct {

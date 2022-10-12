@@ -2,8 +2,8 @@ package rdp
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/qixi7/xengine_core/xmetric"
 	"sync/atomic"
-	"xcore/xmetric"
 )
 
 var metrics Metric

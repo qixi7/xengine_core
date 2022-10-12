@@ -1,8 +1,8 @@
 package channel
 
 import (
+	"github.com/qixi7/xengine_core/xcontainer/queue"
 	"sync"
-	"xcore/xcontainer/queue"
 )
 
 // mpmc channel

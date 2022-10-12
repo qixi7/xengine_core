@@ -1,4 +1,4 @@
-module xcore
+module github.com/qixi7/xengine_core
 
 go 1.18
 

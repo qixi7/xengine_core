@@ -2,12 +2,12 @@ package xnet
 
 import (
 	"encoding/binary"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmemory"
 	"io"
 	"runtime"
 	"strings"
 	"time"
-	"xcore/xlog"
-	"xcore/xmemory"
 )
 
 var byteSliceCreator = xmemory.ByteSliceCreator{}

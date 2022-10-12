@@ -2,13 +2,13 @@ package xprofile
 
 import (
 	"flag"
+	"github.com/qixi7/xengine_core/xlog"
 	"os"
 	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
 	"strings"
 	"sync/atomic"
-	"xcore/xlog"
 )
 
 /*

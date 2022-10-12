@@ -1,7 +1,7 @@
 package xnet
 
 import (
-	"xcore/xmemory"
+	"github.com/qixi7/xengine_core/xmemory"
 )
 
 type backElem struct {

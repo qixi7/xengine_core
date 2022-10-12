@@ -6,16 +6,16 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/qixi7/xengine_core/xhlink"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmetric"
+	"github.com/qixi7/xengine_core/xmodule"
+	"github.com/qixi7/xengine_core/xnet"
 	"reflect"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
-	"xcore/xhlink"
-	"xcore/xlog"
-	"xcore/xmetric"
-	"xcore/xmodule"
-	"xcore/xnet"
 )
 
 const RpcTypeResponse = 0 // rpc 回应

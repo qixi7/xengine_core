@@ -3,10 +3,10 @@ package xnet
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/qixi7/xengine_core/xlog"
 	"github.com/xtaci/kcp-go"
 	"net"
 	"time"
-	"xcore/xlog"
 )
 
 // UDP server. 现主要用kcp

@@ -4,14 +4,14 @@ import (
 	"bufio"
 	"encoding/binary"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmetric"
+	"github.com/qixi7/xengine_core/xnet/baserpcpb"
+	"github.com/qixi7/xengine_core/xutil"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
-	"xcore/xlog"
-	"xcore/xmetric"
-	"xcore/xnet/baserpcpb"
-	"xcore/xutil"
 )
 
 const rpcHeartbeatDuration = time.Second * 3    // rpc心跳间隔

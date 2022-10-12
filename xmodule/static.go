@@ -4,7 +4,7 @@ package xmodule
 static 模块. 放静态不动的数据. 比如策划档, 服务器配置
 */
 
-import "xcore/xlog"
+import "github.com/qixi7/xengine_core/xlog"
 
 type SModule interface {
 	Load() bool

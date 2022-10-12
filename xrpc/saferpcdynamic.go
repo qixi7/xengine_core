@@ -2,10 +2,10 @@ package xrpc
 
 import (
 	"container/heap"
+	"github.com/qixi7/xengine_core/xlog"
+	"github.com/qixi7/xengine_core/xmodule"
+	"github.com/qixi7/xengine_core/xnet"
 	"time"
-	"xcore/xlog"
-	"xcore/xmodule"
-	"xcore/xnet"
 )
 
 // Call represents an active RPC

@@ -2,10 +2,10 @@ package xnet
 
 import (
 	"fmt"
+	"github.com/qixi7/xengine_core/rdp"
+	"github.com/qixi7/xengine_core/xlog"
 	"net"
 	"time"
-	"xcore/rdp"
-	"xcore/xlog"
 )
 
 // rdp server context
