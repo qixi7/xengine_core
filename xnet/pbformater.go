@@ -77,11 +77,11 @@ func (f *PBFormater) Encode(msg interface{}) ([]byte, error) {
 			return nil, ErrPBMaxSize
 		}
 		var body []byte
-			body = make([]byte, size) // body should not escape
-			_, err := m.Body.MarshalTo(body)
-			if err != nil {
-				return nil, err
-			}
+		body = make([]byte, size) // body should not escape
+		_, err := m.Body.MarshalTo(body)
+		if err != nil {
+			return nil, err
+		}
 
 		// 是否需要压缩
 		if f.Codec != nil && len(body) > compressThreshold {

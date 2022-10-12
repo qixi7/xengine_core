@@ -12,7 +12,6 @@ import (
 	"xcore/xmetric"
 	"xcore/xnet/baserpcpb"
 	"xcore/xutil"
-	"xpub/netutil"
 )
 
 const rpcHeartbeatDuration = time.Second * 3    // rpc心跳间隔
@@ -80,9 +79,10 @@ func (ctx *Context) PostDial(addr string, wat Watcher, pkfmt PacketFormater, rou
 		var conn net.Conn
 		var err error
 		sleepTime := 100 * time.Millisecond
-		if ipStr, portStr, err := net.SplitHostPort(addr); err == nil && netutil.IsLocalHostIP(ipStr) {
-			addr = "127.0.0.1:" + portStr
-		}
+		// TODO: 如果ip地址是本机, 这里可以监听回环地址
+		//if ipStr, portStr, err := net.SplitHostPort(addr); err == nil && netutil.IsLocalHostIP(ipStr) {
+		//	addr = "127.0.0.1:" + portStr
+		//}
 		// 若dial存在 or 不用再继续dial了(从cluster配置中删除), 直接return
 		ctx.addDialMap(addr)
 		for {
