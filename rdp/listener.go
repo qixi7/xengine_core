@@ -1,9 +1,14 @@
-package rdp
+package rdpkit
 
 import (
+	"errors"
 	"io"
 	"net"
 	"time"
+)
+
+var (
+	ErrDialAck = errors.New("send back dialAck")
 )
 
 const network = "udp"
@@ -25,18 +30,15 @@ func Listen(address string) (*Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &serverDispatcher{
-		ChecksumConn: &crcConn{conn},
-		b:            make([]byte, mtu, mtu),
-	}
 	l := &Listener{
 		accept:     make(chan dialPacket, incomingChanSize),
-		dispatcher: d,
+		dispatcher: newServerDispatcher(conn),
 		conn:       conn,
 		closeSig:   make(chan struct{}),
 	}
-	d.listener = l
-	go d.read()
+	l.dispatcher.listener = l
+	go l.dispatcher.read()
+	go l.dispatcher.sender()
 	return l, nil
 }
 
@@ -93,18 +95,11 @@ Read:
 	packet := packetBuf[:]
 	n := packetHeader{packetKind: packetDialAck}.writeTo(packet)
 	RdpDebugLog("debug", "new conn from=%v:%v, come in.", p.from.IP.String(), p.from.Port)
-	if err := d.writeFullPacket(packet, n, p.from); err != nil {
-		return nil, err
+	if err := d.writeDirect(packet, n, p.from); err != nil {
+		errorF("writeBack DialAck err=%v", err)
+		return nil, ErrDialAck
 	}
-	c := &Conn{
-		dispatcher: d,
-		remote:     p.from,
-		read:       make(chan incomingPacket, incomingChanSize),
-		send:       newQueue(queueSize),
-		recv:       newQueue(queueSize),
-		lastSeen:   time.Now(),
-		readMu:     make(chan struct{}, 1),
-	}
+	c := NewRdpConn(d, p.from, l.conn)
 	if !d.setConn(p.from, c) {
 		return nil, io.ErrClosedPipe
 	}

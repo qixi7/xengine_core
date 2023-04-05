@@ -1,8 +1,6 @@
-package rdp
+package rdpkit
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/qixi7/xengine_core/xmetric"
 	"sync/atomic"
 )
 
@@ -23,11 +21,11 @@ type Metric struct {
 	// 连接数
 	ConnectionNum int64
 
-	// 丢包情况
-	InitiativeDrop int64 // 主动丢包
-
 	// 发送阻塞重传次数
 	WriteBlockRetransmit int64
+
+	// 包体错误数
+	CheckSumErr uint64
 }
 
 func (m *Metric) Pull() {
@@ -43,36 +41,7 @@ func (m *Metric) Pull() {
 		UDPRecvPackets: atomic.LoadUint64(&metrics.UDPRecvPackets),
 
 		ConnectionNum:        atomic.LoadInt64(&metrics.ConnectionNum),
-		InitiativeDrop:       atomic.LoadInt64(&metrics.InitiativeDrop),
 		WriteBlockRetransmit: atomic.LoadInt64(&metrics.WriteBlockRetransmit),
+		CheckSumErr:          atomic.LoadUint64(&metrics.CheckSumErr),
 	}
-}
-
-func (m *Metric) Push(gather *xmetric.Gather, ch chan<- prometheus.Metric) {
-	gather.PushCounterMetric(ch, "rdp_logical_bytes_sent",
-		float64(m.SendBytes), nil)
-	gather.PushCounterMetric(ch, "rdp_logical_bytes_recv",
-		float64(m.RecvBytes), nil)
-	gather.PushCounterMetric(ch, "rdp_logical_packets_sent",
-		float64(m.SendPackets), nil)
-	gather.PushCounterMetric(ch, "rdp_logical_packets_recv",
-		float64(m.RecvPackets), nil)
-
-	gather.PushCounterMetric(ch, "rdp_bottom_bytes_sent",
-		float64(m.UDPSendBytes), nil)
-	gather.PushCounterMetric(ch, "rdp_bottom_bytes_recv",
-		float64(m.UDPRecvBytes), nil)
-	gather.PushCounterMetric(ch, "rdp_bottom_packet_sent",
-		float64(m.UDPSendPackets), nil)
-	gather.PushCounterMetric(ch, "rdp_bottom_packet_recv",
-		float64(m.UDPRecvPackets), nil)
-
-	gather.PushGaugeMetric(ch, "rdp_connection_num",
-		float64(m.ConnectionNum), nil)
-
-	gather.PushCounterMetric(ch, "rdp_drop_initiative",
-		float64(m.InitiativeDrop), nil)
-
-	gather.PushCounterMetric(ch, "rdp_retran_writeblock",
-		float64(m.WriteBlockRetransmit), nil)
 }

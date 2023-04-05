@@ -1,4 +1,4 @@
-package rdp
+package rdpkit
 
 import (
 	"sync"
@@ -10,7 +10,7 @@ type packet struct {
 }
 
 type queue struct {
-	mu         sync.Mutex
+	mu         sync.RWMutex
 	packets    []packet
 	seq        uint32
 	size       uint32
@@ -23,12 +23,16 @@ type sendQueue interface {
 	Get(offset uint32) (packetLoad, bool)
 	Write(load packetLoad) bool
 	Ack(ack, ackBits uint32, w *Window) int
+	GetSeq() uint32
+	CloseAndClear()
 }
 
 type recvQueue interface {
 	Set(load packetLoad) bool
 	Read() (packetLoad, bool)
 	GetAck() (uint32, uint32)
+	GetSeq() uint32
+	CloseAndClear()
 }
 
 func newQueue(size int) *queue {
@@ -50,9 +54,17 @@ func (q *queue) Set(load packetLoad) bool {
 	index := load.seq % q.size
 	p := &q.packets[index]
 
-	// 重复
 	if p.known {
-		return false
+		// 重复
+		if p.load.seq == load.seq {
+			return false
+		}
+		// 不重复, 但非必要包
+		if load.seq != q.seq {
+			return false
+		}
+		// load.seq == q.seq为必要包, 替换
+		// logkit.Infof("Set replace import Pack.seq=%d, q.seq=%d", load.seq, q.seq)
 	}
 	*p = packet{
 		known: true,
@@ -108,7 +120,26 @@ func (q *queue) GetAck() (uint32, uint32) {
 		}
 	}
 
+	// logkit.Infof("send Ack=%d, SAck=%b", q.seq, ackBits)
+
 	return q.seq, ackBits
+}
+
+func (q *queue) GetSeq() uint32 {
+	var seq uint32
+	q.mu.RLock()
+	seq = q.seq
+	q.mu.RUnlock()
+	return seq
+}
+
+func (q *queue) CloseAndClear() {
+	q.mu.Lock()
+	for i := range q.packets {
+		q.packets[i].known = false
+		q.packets[i].load.free()
+	}
+	q.mu.Unlock()
 }
 
 func (q *queue) Clear(seq uint32) {
@@ -128,7 +159,7 @@ func (q *queue) clear(seq uint32, w *Window) bool {
 
 	p.known = false
 	if w != nil {
-		w.Append(now() - p.load.timestamp)
+		w.Append(nowMs() - p.load.timestamp)
 	}
 	p.load.free()
 	return true
@@ -138,7 +169,7 @@ func (q *queue) Get(offset uint32) (packetLoad, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	//seq := q.seq - 1 + offset
+	// seq是当前ack的值, 即包含(q.seq-1)之前的包已收到
 	seq := q.seq + offset
 	index := seq % q.size
 
@@ -164,9 +195,8 @@ func (q *queue) Write(load packetLoad) bool {
 			// 有别的包已经存在
 			return false
 		}
-		// 已经存在. 不需要去释放, 也可以考虑释放后覆盖重写. 即 free()后执行下面的写代码
-		return true
-		//p.load.free()
+		// 已经存在
+		p.load.free()
 	}
 
 	*p = packet{
@@ -179,6 +209,8 @@ func (q *queue) Write(load packetLoad) bool {
 func (q *queue) Ack(ack, ackBits uint32, w *Window) int {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	// logkit.Infof("SendQueue q.seq=%d, ack=%d, ackBits=%b", q.seq, ack, ackBits)
 
 	// 比较缓存的最新ack和ackBits
 	if q.delAck == ack && q.delAckBits == ackBits {

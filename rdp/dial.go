@@ -1,9 +1,10 @@
-package rdp
+package rdpkit
 
 import (
 	"context"
 	"errors"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,10 +46,8 @@ func DialContext(ctx context.Context, network, address string) (net.Conn, error)
 		defer conn.SetDeadline(time.Time{})
 	}
 
-	d := &clientDispatcher{
-		ChecksumConn: &crcConn{conn},
-		b:            make([]byte, mtu, mtu),
-	}
+	d := newClientDispatcher(conn)
+	d.client = NewRdpConn(d, remote, conn)
 
 	done := make(chan struct{})
 
@@ -59,7 +58,10 @@ func DialContext(ctx context.Context, network, address string) (net.Conn, error)
 
 		n := packetHeader{packetKind: packetDial}.writeTo(packet)
 		for count := 0; ; count++ {
-			d.writeFullPacket(packet, n, remote)
+			//infoF("send dial once!")
+			if err := d.writeDirect(packet, n, remote); err != nil {
+				errorF("dial err=%v", err)
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -81,8 +83,17 @@ func DialContext(ctx context.Context, network, address string) (net.Conn, error)
 			return nil, errors.New("context is done")
 		default:
 		}
-		n, addr, err := d.readPacket(packet)
+		// 阻塞读
+		n, addr, err := conn.ReadFromUDP(packet)
 		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		atomic.AddUint64(&metrics.UDPRecvBytes, uint64(n))
+		atomic.AddUint64(&metrics.UDPRecvPackets, 1)
+		n = checkPacket(packet, n)
+		if n < 1 {
+			err = errChecksumMismatch
 			conn.Close()
 			return nil, err
 		}
@@ -99,17 +110,8 @@ func DialContext(ctx context.Context, network, address string) (net.Conn, error)
 
 	close(done)
 
-	d.client = &Conn{
-		dispatcher: d,
-		remote:     remote,
-		read:       make(chan incomingPacket, incomingChanSize),
-		send:       newQueue(queueSize),
-		recv:       newQueue(queueSize),
-		lastSeen:   time.Now(),
-		readMu:     make(chan struct{}, 1),
-	}
-
 	go d.read()
+	go d.sender()
 
 	return d.client, nil
 }

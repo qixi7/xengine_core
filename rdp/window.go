@@ -1,4 +1,4 @@
-package rdp
+package rdpkit
 
 type Window struct {
 	v    [rttWindow]int64
